@@ -92,7 +92,10 @@ impl Session {
         let encoding = encoding.unwrap_or(encoding::DEFAULT);
         let kind = kind.unwrap_or(data_kind::DEFAULT);
         let congestion_control = congestion_control.unwrap_or_default().cc;
-        s.write_ext(&k, payload.into(), encoding, kind, congestion_control)
+        s.write(&k, payload.into())
+            .encoding(encoding)
+            .kind(kind)
+            .congestion_control(congestion_control)
             .wait()
             .map_err(to_pyerr)
     }
@@ -214,7 +217,13 @@ impl Session {
     ) -> PyResult<Subscriber> {
         let s = self.as_ref()?;
         let k = znreskey_of_pyany(resource)?;
-        let zn_sub = s.declare_subscriber(&k, &info.i).wait().map_err(to_pyerr)?;
+        let zn_sub = s
+            .declare_subscriber(&k)
+            .reliability(info.i.reliability)
+            .mode(info.i.mode)
+            .period(info.i.period)
+            .wait()
+            .map_err(to_pyerr)?;
         // Note: workaround to allow moving of zn_sub into the task below.
         // Otherwise, s is moved also, but can't because it doesn't have 'static lifetime.
         let mut static_zn_sub = unsafe {
@@ -306,7 +315,11 @@ impl Session {
     ) -> PyResult<Queryable> {
         let s = self.as_ref()?;
         let k = znreskey_of_pyany(resource)?;
-        let zn_quer = s.declare_queryable(&k, kind).wait().map_err(to_pyerr)?;
+        let zn_quer = s
+            .declare_queryable(&k)
+            .kind(kind)
+            .wait()
+            .map_err(to_pyerr)?;
         // Note: workaround to allow moving of zn_quer into the task below.
         // Otherwise, s is moved also, but can't because it doesn't have 'static lifetime.
         let mut static_zn_quer = unsafe {
@@ -395,12 +408,10 @@ impl Session {
         let s = self.as_ref()?;
         let k = znreskey_of_pyany(resource)?;
         let mut zn_recv = s
-            .query(
-                &k,
-                predicate,
-                target.unwrap_or_default().t,
-                consolidation.unwrap_or_default().c,
-            )
+            .query(&k)
+            .predicate(predicate)
+            .target(target.unwrap_or_default().t)
+            .consolidation(consolidation.unwrap_or_default().c)
             .wait()
             .map_err(to_pyerr)?;
 
@@ -472,14 +483,12 @@ impl Session {
         let k = znreskey_of_pyany(resource)?;
         task::block_on(async {
             let mut replies = s
-                .query(
-                    &k,
-                    predicate,
-                    target.unwrap_or_default().t,
-                    consolidation.unwrap_or_default().c,
-                )
-                .map_err(to_pyerr)
-                .await?;
+                .query(&k)
+                .predicate(predicate)
+                .target(target.unwrap_or_default().t)
+                .consolidation(consolidation.unwrap_or_default().c)
+                .wait()
+                .map_err(to_pyerr)?;
             let gil = Python::acquire_gil();
             let py = gil.python();
             let result = PyList::empty(py);
